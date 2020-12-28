@@ -65,8 +65,6 @@ def read():
             value = data[readkey]
             return "the key value pair is {}, {} ".format(readkey,value),200
         else:
-            with open('./data/data.json') as f:
-                data = json.load(f)
             del data[readkey]
             with open('./data/data.json', "w") as f:
                 json.dump(data, f)
@@ -83,9 +81,25 @@ def delete():
         data = json.load(f)
 
     if deletekey not in data:
-        return "bad request",400   
+        return "key doesnt exist",400
+    else:
+        datetime_str = data[deletekey]['createdat']
+        datetime_object = datetime.strptime(datetime_str, '%d/%m/%Y %H:%M:%S')
+        timetoliveinsecs = int(data[deletekey]['timetolive'])
+        if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
+            del data[deletekey]
+            with open('./data/data.json', "w") as f:
+                json.dump(data, f)
+            return "key deleted",400
+        else:
+            del data[deletekey]
+            with open('./data/data.json', "w") as f:
+                json.dump(data, f)
+            return "key timed out",400  
+
 
     del data[deletekey]
+
     with open('./data/data.json', "w") as f:
         json.dump(data, f)
     return "deleted successfully",200    
