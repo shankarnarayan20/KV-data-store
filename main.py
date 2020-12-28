@@ -1,7 +1,8 @@
 import flask
 import json
 from filepath import filepath
-from datetime import datetime
+from datetime import datetime,timedelta
+import os
 
 path = filepath()
 app = flask.Flask(__name__)
@@ -21,7 +22,7 @@ def create():
     for req_datakeys in req_data:
         if len(req_datakeys)>32:
             return "length error",400
-        req_data[req_datakeys]['CreatedAt'] = nowasstring
+        req_data[req_datakeys]['createdat'] = nowasstring
         if 'timetolive' in req_data[req_datakeys].keys():
             try:
                 int(req_data[req_datakeys]['timetolive'])
@@ -29,6 +30,9 @@ def create():
             except:
                 return "timetolive is not an integer",400    
     
+    if os.stat(path).st_size/1073741824 > 1:
+        return "file size greater than 1GB",400.
+
     with open('./data/data.json') as f:
         data = json.load(f)
     
@@ -45,19 +49,34 @@ def create():
 def read():
     readkey = flask.request.args.get('key')
     if not readkey:
-        return "no key entered", 400     
+        return "no key entered", 400    
+
+    if os.stat(path).st_size/1073741824 > 1:
+        return "file size greater than 1GB",500
+
     with open(path) as f:
-        data = json.load(f)
+        data = json.load(f)    
+
     if readkey in data:
-        value = data[readkey]
-        return "the key value pair is {}, {} ".format(readkey,value),200    
+        datetime_str = data[readkey]['createdat']
+        datetime_object = datetime.strptime(datetime_str, '%d/%m/%Y %H:%M:%S')
+        timetoliveinsecs = int(data[readkey]['timetolive'])
+        if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
+            value = data[readkey]
+            return "the key value pair is {}, {} ".format(readkey,value),200
+        else:
+            with open('./data/data.json') as f:
+                data = json.load(f)
+            del data[readkey]
+            with open('./data/data.json', "w") as f:
+                json.dump(data, f)
+            return "key timed out",400        
     else: 
         return "key doesnt exist",400
 
 @app.route('/delete', methods=['DELETE'])
 def delete():
     deletekey = flask.request.args.get('key')
-    deletekeyfunction(deletekey)
     if not deletekey:
         return "no key entered", 400
     with open('./data/data.json') as f:
@@ -70,6 +89,11 @@ def delete():
     with open('./data/data.json', "w") as f:
         json.dump(data, f)
     return "deleted successfully",200    
+
+@app.route('/text', methods=['GET'])
+def test():
+      print(os.stat(path).st_size) 
+      return "works",200
 
 
 app.run(debug=True)
