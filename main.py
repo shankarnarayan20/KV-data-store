@@ -10,7 +10,16 @@ class DataStore:
             self.path = './data/data.json'
         else: 
             self.path = str(sys.argv[1])
+
+    def readfromfile(self):
+        with open(self.path) as f:
+            data = json.load(f)
+            return data      
     
+    def writetofile(self,data):
+        with open(self.path, "w") as f:
+            json.dump(data, f)
+               
     def create(self,key,jsondata):
         
         writedata = dict()
@@ -35,14 +44,12 @@ class DataStore:
         if os.stat(self.path).st_size/1073741824 > 1:
             raise MemoryError('file size greater than 1GB')
 
-        with open(self.path) as f:
-            data = json.load(f)
-            if key in data:
-                raise KeyError('key is already present')
+        data = self.readfromfile()
+        if key in data:
+            raise KeyError('key is already present')
         
         data.update(writedata)
-        with open(self.path, "w") as f:
-            json.dump(data, f)
+        self.writetofile(data)
         return "key has been successfully added"
 
     def read(self,readkey): 
@@ -50,8 +57,7 @@ class DataStore:
         if os.stat(self.path).st_size/1073741824 > 1:
             raise SystemError('size greater than 1GB')
 
-        with open(self.path) as f:
-            data = json.load(f)    
+        data = self.readfromfile()    
         
         if readkey in data:
             if 'timetolive' in data[readkey]:
@@ -63,8 +69,7 @@ class DataStore:
                     return "the key value pair is {}, {} ".format(readkey,value)
                 else:
                     del data[readkey]
-                    with open(self.path, "w") as f:
-                        json.dump(data, f)
+                    self.writetofile(data)
                     raise KeyError('Key timed out')       
             else:
                 value = data[readkey]
@@ -76,14 +81,12 @@ class DataStore:
 
     def delete(self,deletekey):
 
-        with open(self.path) as f:
-            data = json.load(f)
+        data = self.readfromfile()
         
         if deletekey in data:
             if 'timetolive' not in data[deletekey]:
                 del data[deletekey]
-                with open(self.path, "w") as f:
-                    json.dump(data, f)
+                self.writetofile(data)
                 return "key deleted"
             else:
                 datetime_str = data[deletekey]['createdat']
@@ -91,13 +94,11 @@ class DataStore:
                 timetoliveinsecs = int(data[deletekey]['timetolive'])
                 if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
                     del data[deletekey]
-                    with open(self.path, "w") as f:
-                        json.dump(data, f)
+                    self.writetofile(data)
                     return "key deleted"
                 else:
                     del data[deletekey]
-                    with open(self.path, "w") as f:
-                        json.dump(data, f)
+                    self.writetofile(data)
                     raise KeyError ("key timed out")    
         else:    
             raise KeyError ("key doesnt exist")
