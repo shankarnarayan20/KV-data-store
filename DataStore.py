@@ -1,26 +1,45 @@
-import sys
 import json
 from datetime import datetime,timedelta
 import os
 import pickle
+import fcntl
+import threading
 
 class DataStore:
-    def __init__(self):
-        if len(sys.argv) == 1:
-            self.path = './data/data.json'
-        else: 
-            self.path = str(sys.argv[1])
+    def __init__(self,path = './data/data.json'):
+        self.path = path
+        self._lock = threading.Lock()
+
 
     def readfromfile(self):
-        with open(self.path) as f:
-            data = json.load(f)
-            return data      
+        with self._lock:
+            with open(self.path) as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX) 
+                if os.path.getsize(self.path) > 0:
+                    data = json.load(f)  
+                else:
+                    data = {}
+                f.close()     
+        return data          
     
     def writetofile(self,data):
-        with open(self.path, "w") as f:
-            json.dump(data, f)
+        with self._lock:
+            with open(self.path, "w") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX) 
+                json.dump(data, f)
+                f.close()    
                
     def create(self,key,jsondata):
+        
+        if len(key) == 0 or not jsondata:
+            raise AssertionError
+
+        if os.path.exists(self.path):
+            if os.stat(self.path).st_size/1073741824 > 1:
+                raise MemoryError('file size greater than 1GB')
+        else:
+            f = open(self.path,"x")
+            f.close()  
         
         writedata = dict()
         writedata[key] = jsondata
@@ -37,14 +56,11 @@ class DataStore:
         if 'timetolive' in jsondata.keys():
             try:
                 int(jsondata['timetolive'])
-                pass
+
             except:
                 raise TypeError('timetolive is not an integer')   
         
-        if os.stat(self.path).st_size/1073741824 > 1:
-            raise MemoryError('file size greater than 1GB')
-
-        data = self.readfromfile()
+        data = self.readfromfile()        
         if key in data:
             raise KeyError('key is already present')
         
