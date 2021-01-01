@@ -1,113 +1,103 @@
-import flask
+import sys
 import json
-from filepath import filepath
 from datetime import datetime,timedelta
 import os
+import pickle
 
-path = filepath()
-app = flask.Flask(__name__)
-app.config["DEBUG"] = True
-
-
-@app.route('/', methods=['GET'])
-def home():
-    return "Key Value Data Store by Shankar Narayan",200
-
-@app.route('/create', methods=['POST'])
-def create():
-    req_data = flask.request.get_json()
-    now = datetime.now()
-    nowasstring = now.strftime("%d/%m/%Y %H:%M:%S")
+class DataStore:
+    def __init__(self):
+        if len(sys.argv) == 1:
+            self.path = './data/data.json'
+        else: 
+            self.path = str(sys.argv[1])
     
-    for req_datakeys in req_data:
-        if len(req_datakeys)>32:
-            return "length error",400
-        req_data[req_datakeys]['createdat'] = nowasstring
-        if 'timetolive' in req_data[req_datakeys].keys():
+    def create(self,key,jsondata):
+        
+        writedata = dict()
+        writedata[key] = jsondata
+        now = datetime.now()
+        nowasstring = now.strftime("%d/%m/%Y %H:%M:%S")
+
+        if len(key)>32:
+            raise TypeError('length greater than 32')
+        
+        if len(pickle.dumps(jsondata)) > 16*1024:
+            raise MemoryError('Json size must be less than 16KB')  
+    
+        writedata[key]['createdat'] = nowasstring
+        if 'timetolive' in jsondata.keys():
             try:
-                int(req_data[req_datakeys]['timetolive'])
+                int(jsondata['timetolive'])
                 pass
             except:
-                return "timetolive is not an integer",400    
-    
-    if os.stat(path).st_size/1073741824 > 1:
-        return "file size greater than 1GB",400.
+                raise TypeError('timetolive is not an integer')   
+        
+        if os.stat(self.path).st_size/1073741824 > 1:
+            raise MemoryError('file size greater than 1GB')
 
-    with open('./data/data.json') as f:
-        data = json.load(f)
-    
-    for key in req_data:
-        if key in data:
-            return "key already present",400
-     
-    data.update(req_data)
-    with open('./data/data.json', "w") as f:
-        json.dump(data, f)
-    return "data has been successfully added",200    
+        with open(self.path) as f:
+            data = json.load(f)
+            if key in data:
+                raise KeyError('key is already present')
+        
+        data.update(writedata)
+        with open(self.path, "w") as f:
+            json.dump(data, f)
+        return "key has been successfully added"
 
-@app.route('/read', methods=['GET'])
-def read():
-    readkey = flask.request.args.get('key')
-    if not readkey:
-        return "no key entered", 400    
+    def read(self,readkey): 
 
-    if os.stat(path).st_size/1073741824 > 1:
-        return "file size greater than 1GB",500
+        if os.stat(self.path).st_size/1073741824 > 1:
+            raise SystemError('size greater than 1GB')
 
-    with open(path) as f:
-        data = json.load(f)    
-
-    if readkey in data:
-        datetime_str = data[readkey]['createdat']
-        datetime_object = datetime.strptime(datetime_str, '%d/%m/%Y %H:%M:%S')
-        timetoliveinsecs = int(data[readkey]['timetolive'])
-        if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
-            value = data[readkey]
-            return "the key value pair is {}, {} ".format(readkey,value),200
+        with open(self.path) as f:
+            data = json.load(f)    
+        
+        if readkey in data:
+            if 'timetolive' in data[readkey]:
+                datetime_str = data[readkey]['createdat']
+                datetime_object = datetime.strptime(datetime_str, '%d/%m/%Y %H:%M:%S')
+                timetoliveinsecs = int(data[readkey]['timetolive'])
+                if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
+                    value = data[readkey]
+                    return "the key value pair is {}, {} ".format(readkey,value)
+                else:
+                    del data[readkey]
+                    with open(self.path, "w") as f:
+                        json.dump(data, f)
+                    raise KeyError('Key timed out')       
+            else:
+                value = data[readkey]
+                return "the key value pair is {}, {} ".format(readkey,value)
+                 
         else:
-            del data[readkey]
-            with open('./data/data.json', "w") as f:
-                json.dump(data, f)
-            return "key timed out",400        
-    else: 
-        return "key doesnt exist",400
+            raise KeyError('key doesnt exist')
+            
 
-@app.route('/delete', methods=['DELETE'])
-def delete():
-    deletekey = flask.request.args.get('key')
-    if not deletekey:
-        return "no key entered", 400
-    with open('./data/data.json') as f:
-        data = json.load(f)
+    def delete(self,deletekey):
 
-    if deletekey not in data:
-        return "key doesnt exist",400
-    else:
-        datetime_str = data[deletekey]['createdat']
-        datetime_object = datetime.strptime(datetime_str, '%d/%m/%Y %H:%M:%S')
-        timetoliveinsecs = int(data[deletekey]['timetolive'])
-        if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
-            del data[deletekey]
-            with open('./data/data.json', "w") as f:
-                json.dump(data, f)
-            return "key deleted",400
-        else:
-            del data[deletekey]
-            with open('./data/data.json', "w") as f:
-                json.dump(data, f)
-            return "key timed out",400  
-
-
-    del data[deletekey]
-
-    with open('./data/data.json', "w") as f:
-        json.dump(data, f)
-    return "deleted successfully",200    
-
-@app.route('/text', methods=['GET'])
-def test():
-      print(os.stat(path).st_size) 
-      return "works",200
-
-
-app.run(debug=True)
+        with open(self.path) as f:
+            data = json.load(f)
+        
+        if deletekey in data:
+            if 'timetolive' not in data[deletekey]:
+                del data[deletekey]
+                with open(self.path, "w") as f:
+                    json.dump(data, f)
+                return "key deleted"
+            else:
+                datetime_str = data[deletekey]['createdat']
+                datetime_object = datetime.strptime(datetime_str, '%d/%m/%Y %H:%M:%S')
+                timetoliveinsecs = int(data[deletekey]['timetolive'])
+                if (datetime_object + timedelta(0,timetoliveinsecs)) > datetime.now():
+                    del data[deletekey]
+                    with open(self.path, "w") as f:
+                        json.dump(data, f)
+                    return "key deleted"
+                else:
+                    del data[deletekey]
+                    with open(self.path, "w") as f:
+                        json.dump(data, f)
+                    raise KeyError ("key timed out")    
+        else:    
+            raise KeyError ("key doesnt exist")
