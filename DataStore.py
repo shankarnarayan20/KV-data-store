@@ -1,3 +1,6 @@
+__author__ = 'Shankar Narayan S'
+__email__ = 'shankarnarayan20@gmail.com'
+
 import json
 from datetime import datetime,timedelta
 import os
